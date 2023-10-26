@@ -1,5 +1,6 @@
 package javacourse.microservices.employeeservice.service.impl;
 
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import javacourse.microservices.employeeservice.dto.APIResponseDto;
 import javacourse.microservices.employeeservice.dto.DepartmentDto;
 import javacourse.microservices.employeeservice.dto.EmployeeDto;
@@ -19,8 +20,8 @@ import org.springframework.web.reactive.function.client.WebClient;
 public class EmployeeServiceImpl implements EmployeeService {
 //    private RestTemplate restTemplate;
     private EmployeeRepository employeeRepository;
-//    private WebClient webClient;
-    private APIClient apiClient;
+    private WebClient webClient;
+//    private APIClient apiClient;
 
     @Override
     public EmployeeDto saveEmployee(EmployeeDto employeeDto) {
@@ -46,20 +47,46 @@ public class EmployeeServiceImpl implements EmployeeService {
     }
 
     @Override
+    @CircuitBreaker(name = "${spring.application.name}", fallbackMethod = "getDefaultDepartment")
     public APIResponseDto getEmployeeById(Long employeeId) {
+        Employee employee = employeeRepository.findById(employeeId).get();
+
+
+
+        EmployeeDto employeeDto = new EmployeeDto(
+                employee.getId(),
+                employee.getFirstName(),
+                employee.getLastName(),
+                employee.getEmail(),
+                employee.getDepartmentCode()
+        );
+
+        DepartmentDto departmentDto = webClient.get()
+                .uri("http://localhost:8080/api/departments/" + employee.getDepartmentCode())
+                .retrieve()
+                .bodyToMono(DepartmentDto.class)
+                .block();
+
+        APIResponseDto apiResponseDto = new APIResponseDto();
+        apiResponseDto.setEmployee(employeeDto);
+        apiResponseDto.setDepartment(departmentDto);
+
+        return apiResponseDto;
+    }
+
+    public APIResponseDto getDefaultDepartment(Long employeeId, Exception exception) {
         Employee employee = employeeRepository.findById(employeeId).get();
 
 //        ResponseEntity<DepartmentDto> responseEntity = restTemplate.getForEntity("http://localhost:8080/api/departments/" + employee.getDepartmentCode(),
 //                DepartmentDto.class);
 //        DepartmentDto departmentDto = responseEntity.getBody();
 
-//        DepartmentDto departmentDto = webClient.get()
-//                .uri("http://localhost:8080/api/departments/" + employee.getDepartmentCode())
-//                .retrieve()
-//                .bodyToMono(DepartmentDto.class)
-//                .block();
+        DepartmentDto departmentDto = new DepartmentDto();
+        departmentDto.setDepartmentCode("DEF001");
+        departmentDto.setDepartmentName("Default Department");
+        departmentDto.setDepartmentDescription("This is the returned default department");
 
-        DepartmentDto departmentDto = apiClient.getDepartment(employee.getDepartmentCode());
+//        DepartmentDto departmentDto = apiClient.getDepartment(employee.getDepartmentCode());
 
 
         EmployeeDto employeeDto = new EmployeeDto(
